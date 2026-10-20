@@ -46,7 +46,7 @@ jobs:
       - name: Test compliant configuration
         run: conftest test tests/s3-private.json --policy policies
 
-      - name: Ensure non-compliant configuration is rejected
+      - name: Ensure public S3 configuration is rejected
         shell: bash
         run: |
           set +e
@@ -57,13 +57,45 @@ jobs:
           echo "$output"
 
           if [ "$status" -eq 0 ]; then
-            echo "ERROR: Non-compliant configuration was accepted."
+            echo "ERROR: Public S3 configuration was accepted."
             exit 1
           fi
 
-          if ! echo "$output" | grep -Fq "un bucket S3 ne doit pas avoir une ACL public-read"; then
-            echo "ERROR: Conftest failed for an unexpected reason."
+          if ! echo "$output" | grep -Fq "ACL public-read"; then
+            echo "ERROR: Expected public ACL violation was not detected."
             exit 1
           fi
 
-          echo "SUCCESS: Non-compliant configuration was rejected by the expected policy."
+          echo "SUCCESS: Public ACL violation detected."
+
+      - name: Ensure insecure S3 configuration is rejected
+        shell: bash
+        run: |
+          set +e
+          output=$(conftest test tests/s3-insecure.json --policy policies 2>&1)
+          status=$?
+          set -e
+
+          echo "$output"
+
+          if [ "$status" -eq 0 ]; then
+            echo "ERROR: Insecure configuration was accepted."
+            exit 1
+          fi
+
+          for expected in \
+            "algorithme de chiffrement non conforme" \
+            "block_public_acls" \
+            "block_public_policy" \
+            "ignore_public_acls" \
+            "restrict_public_buckets" \
+            "public-read-write" \
+            "versioning doit être activé"
+          do
+            if ! echo "$output" | grep -Fq "$expected"; then
+              echo "ERROR: Expected violation not detected: $expected"
+              exit 1
+            fi
+          done
+
+          echo "SUCCESS: All expected violations were detected."
